@@ -343,17 +343,65 @@
       text-align: center; font-size: .75rem;
       color: #8a6a55; margin-top: 1rem; line-height: 1.6;
     }
-    .rsvp-success {
-      display: none; text-align: center; padding: 2rem;
+    /* ─── POPUP MODAL ─── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 2000;
+      background: rgba(30, 16, 8, 0.75);
+      backdrop-filter: blur(6px);
+      align-items: center; justify-content: center;
     }
-    .rsvp-success .check { font-size: 2.5rem; }
-    .rsvp-success p {
+    .modal-overlay.open { display: flex; }
+    .modal-card {
+      background: var(--white);
+      border-radius: 4px;
+      max-width: 440px; width: 90%;
+      padding: 3rem 2.5rem;
+      text-align: center;
+      animation: modalIn .45s cubic-bezier(.22,1,.36,1);
+      position: relative;
+      border-top: 4px solid var(--accent);
+    }
+    @keyframes modalIn {
+      from { opacity: 0; transform: translateY(30px) scale(.96); }
+      to   { opacity: 1; transform: none; }
+    }
+    .modal-ornament {
+      font-size: 2.8rem; margin-bottom: 1rem; display: block;
+    }
+    .modal-title {
       font-family: 'Cormorant Garamond', serif;
-      font-size: 1.4rem; color: var(--dark); margin-top: .5rem;
+      font-size: 2rem; color: var(--dark);
+      font-weight: 400; line-height: 1.2;
+      margin-bottom: .5rem;
     }
-    .rsvp-success small {
-      font-size: .78rem; color: var(--accent);
+    .modal-name {
+      color: var(--accent); font-style: italic;
     }
+    .modal-text {
+      font-size: .83rem; color: #6b4e38;
+      line-height: 1.8; margin-bottom: 1.5rem;
+    }
+    .modal-detail {
+      background: var(--light);
+      border-radius: 2px; padding: .8rem 1rem;
+      font-size: .78rem; color: var(--dark);
+      margin-bottom: 1.8rem; line-height: 1.7;
+    }
+    .modal-close {
+      display: inline-block; padding: .7rem 2rem;
+      background: var(--accent); color: var(--white);
+      border: none; font-family: 'Montserrat', sans-serif;
+      font-size: .72rem; letter-spacing: 2px; text-transform: uppercase;
+      cursor: pointer; border-radius: 2px; transition: background .3s;
+    }
+    .modal-close:hover { background: var(--dark); }
+    .modal-divider {
+      width: 40px; height: 1px; background: var(--accent);
+      margin: 1rem auto;
+    }
+    /* loading state no botão */
+    .btn-loading { opacity: .6; pointer-events: none; }
+    .btn-loading::after { content: ' ...'; }
 
     /* ─── PRESENTES ─── */
     #presentes { background: var(--cream); }
@@ -672,14 +720,26 @@
           nossa união será abençoada diante de Deus. ❤
         </p>
       </div>
-      <div class="rsvp-success" id="rsvpSuccess">
-        <div class="check">🎉</div>
-        <p>Presença confirmada!</p>
-        <small>Obrigado! Mal podemos esperar para celebrar com você.</small>
-      </div>
     </div>
   </div>
 </section>
+
+<!-- POPUP MODAL -->
+<div class="modal-overlay" id="rsvpModal" onclick="closeModal(event)">
+  <div class="modal-card">
+    <span class="modal-ornament">💍</span>
+    <h3 class="modal-title">
+      Obrigado,<br><span class="modal-name" id="modalNome"></span>!
+    </h3>
+    <div class="modal-divider"></div>
+    <p class="modal-text" id="modalText"></p>
+    <div class="modal-detail">
+      📅 23 de outubro de 2026 às 16h00<br>
+      📍 Villa Vezzane — Rua Benedito Fontana, 510, Mairiporã
+    </div>
+    <button class="modal-close" onclick="fecharModal()">Fechar</button>
+  </div>
+</div>
 
 <!-- PRESENTES -->
 <section id="presentes">
@@ -784,16 +844,61 @@
   setInterval(updateCountdown, 1000);
 
   // ─── RSVP ───
-  function submitRsvp() {
-    const nome = document.getElementById('rsvpNome').value.trim();
+  async function submitRsvp() {
+    const nome      = document.getElementById('rsvpNome').value.trim();
+    const acomp     = document.getElementById('rsvpAcomp').value;
+    const presenca  = document.getElementById('rsvpPresenca').value;
+    const mensagem  = document.getElementById('rsvpMsg').value.trim();
+
     if (!nome) { alert('Por favor, informe seu nome.'); return; }
-    document.getElementById('rsvpFormContent').style.display = 'none';
-    document.getElementById('rsvpSuccess').style.display = 'block';
-    // Se houver mensagem, adicionar como recado
-    const msg = document.getElementById('rsvpMsg').value.trim();
-    if (msg) {
-      addRecado(nome, msg);
+
+    const btn = document.querySelector('#rsvpFormContent .btn-primary');
+    btn.classList.add('btn-loading');
+    btn.textContent = 'Enviando';
+
+    try {
+      const res = await fetch('/api/rsvp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome, acompanhantes: acomp, presenca, mensagem })
+      });
+      if (!res.ok) throw new Error('Erro no servidor');
+    } catch (e) {
+      btn.classList.remove('btn-loading');
+      btn.textContent = 'Confirmar Presença';
+      alert('Ocorreu um erro. Por favor, tente novamente.');
+      return;
     }
+
+    // Abre popup
+    document.getElementById('modalNome').textContent = nome;
+    if (presenca === 'sim') {
+      const total = 1 + parseInt(acomp);
+      document.getElementById('modalText').textContent =
+        `Sua presença foi confirmada com sucesso! Estamos muito felizes em contar com você nesse dia tão especial. ${total > 1 ? `Aguardamos você e mais ${acomp} acompanhante(s). ` : ''}Mal podemos esperar para celebrar juntos!`;
+    } else {
+      document.getElementById('modalText').textContent =
+        'Recebemos sua resposta. Sentiremos muito a sua falta, mas agradecemos por ter nos avisado! Que possamos celebrar juntos em outras ocasiões.';
+    }
+    document.getElementById('rsvpModal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+
+    // Adiciona mensagem nos recados se houver
+    if (mensagem) addRecado(nome, mensagem);
+
+    // Limpa formulário
+    document.getElementById('rsvpNome').value = '';
+    document.getElementById('rsvpMsg').value  = '';
+    btn.classList.remove('btn-loading');
+    btn.textContent = 'Confirmar Presença';
+  }
+
+  function fecharModal() {
+    document.getElementById('rsvpModal').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+  function closeModal(e) {
+    if (e.target === document.getElementById('rsvpModal')) fecharModal();
   }
 
   // ─── RECADOS ───
