@@ -2,7 +2,14 @@
   "name": "site-lele",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=18.x"
+  },
+  "scripts": {
+    "test": "node tests/rsvp.test.js"
+  },
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.0"
+    "@supabase/supabase-js": "^2.45.0",
+    "node-fetch": "^3.3.2"
   }
 }
