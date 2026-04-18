@@ -35,9 +35,23 @@ require.cache[require.resolve('@supabase/supabase-js')] = {
   }
 };
 
+// ── Mock global do fetch (CallMeBot) ────────────────────────────
+let fetchCalls = [];
+let fetchShouldFail = false;
+
+global.fetch = async (url) => {
+  fetchCalls.push(url);
+  if (fetchShouldFail) throw new Error('network error');
+  return { status: 200 };
+};
+
+// Recarrega o handler sem cache para pegar o fetch mockado
+delete require.cache[require.resolve('../api/rsvp')];
 const handler = require('../api/rsvp');
 
 // ── Helpers ──────────────────────────────────────────────────────
+function resetFetch() { fetchCalls = []; fetchShouldFail = false; }
+
 async function run(body, envOverrides) {
   setEnv(envOverrides);
   const req = { method: 'POST', body };
@@ -144,6 +158,96 @@ async function test(name, fn) {
     const res = mockRes();
     await handler(req, res);
     assert.strictEqual(res._status, 400);
+  });
+
+  // ── WhatsApp (CallMeBot) ────────────────────────────────────────
+  console.log('\n── WhatsApp / CallMeBot ────────────────────────────────\n');
+
+  // 11. Dispara fetch para CallMeBot quando variáveis presentes
+  await test('Dispara fetch para CallMeBot ao confirmar presença', async () => {
+    resetFetch();
+    supabaseInsertResult = { error: null };
+    await run(
+      { nome: 'Letícia', acompanhantes: '1', presenca: 'sim', mensagem: 'Feliz!' },
+      { CALLMEBOT_APIKEY: '4447555', NOTIFY_PHONE: '5511984362736' }
+    );
+    assert.strictEqual(fetchCalls.length, 1, 'fetch deve ser chamado exatamente 1 vez');
+    assert.ok(fetchCalls[0].includes('api.callmebot.com'), 'URL deve ser do CallMeBot');
+  });
+
+  // 12. URL contém phone, apikey e texto codificado
+  await test('URL do CallMeBot contém phone, apikey e nome do convidado', async () => {
+    resetFetch();
+    supabaseInsertResult = { error: null };
+    await run(
+      { nome: 'Paulo Noivo', acompanhantes: '0', presenca: 'sim' },
+      { CALLMEBOT_APIKEY: '4447555', NOTIFY_PHONE: '5511984362736' }
+    );
+    const url = fetchCalls[0];
+    assert.ok(url.includes('phone=5511984362736'), 'URL deve conter o telefone');
+    assert.ok(url.includes('apikey=4447555'),       'URL deve conter o apikey');
+    assert.ok(url.includes('Paulo'),                'URL deve conter o nome');
+  });
+
+  // 13. Não dispara fetch quando CALLMEBOT_APIKEY ausente
+  await test('Não dispara WhatsApp se CALLMEBOT_APIKEY estiver vazio', async () => {
+    resetFetch();
+    supabaseInsertResult = { error: null };
+    await run(
+      { nome: 'Ana', presenca: 'sim' },
+      { CALLMEBOT_APIKEY: '', NOTIFY_PHONE: '5511984362736' }
+    );
+    assert.strictEqual(fetchCalls.length, 0, 'fetch não deve ser chamado sem apikey');
+  });
+
+  // 14. Não dispara fetch quando NOTIFY_PHONE ausente
+  await test('Não dispara WhatsApp se NOTIFY_PHONE estiver vazio', async () => {
+    resetFetch();
+    supabaseInsertResult = { error: null };
+    await run(
+      { nome: 'Carlos', presenca: 'sim' },
+      { CALLMEBOT_APIKEY: '4447555', NOTIFY_PHONE: '' }
+    );
+    assert.strictEqual(fetchCalls.length, 0, 'fetch não deve ser chamado sem telefone');
+  });
+
+  // 15. Falha no CallMeBot não retorna erro para o cliente
+  await test('Falha no CallMeBot não impede retorno 200', async () => {
+    resetFetch();
+    fetchShouldFail = true;
+    supabaseInsertResult = { error: null };
+    const res = await run(
+      { nome: 'Roberto', presenca: 'sim' },
+      { CALLMEBOT_APIKEY: '4447555', NOTIFY_PHONE: '5511984362736' }
+    );
+    assert.strictEqual(res._status, 200, 'deve retornar 200 mesmo com falha no WhatsApp');
+    assert.strictEqual(res._body.ok, true);
+    resetFetch();
+  });
+
+  // 16. Mensagem de recusa não contém total de pessoas
+  await test('Mensagem de recusa não inclui contagem de acompanhantes', async () => {
+    resetFetch();
+    supabaseInsertResult = { error: null };
+    await run(
+      { nome: 'Marcos', acompanhantes: '2', presenca: 'nao' },
+      { CALLMEBOT_APIKEY: '4447555', NOTIFY_PHONE: '5511984362736' }
+    );
+    const url = decodeURIComponent(fetchCalls[0]);
+    assert.ok(url.includes('NAO'), 'deve indicar recusa');
+    assert.ok(!url.includes('Total: 3'), 'não deve mostrar total em recusa');
+  });
+
+  // 17. Mensagem de confirmação inclui total correto
+  await test('Mensagem de confirmação inclui total de pessoas correto', async () => {
+    resetFetch();
+    supabaseInsertResult = { error: null };
+    await run(
+      { nome: 'Fernanda', acompanhantes: '2', presenca: 'sim' },
+      { CALLMEBOT_APIKEY: '4447555', NOTIFY_PHONE: '5511984362736' }
+    );
+    const url = decodeURIComponent(fetchCalls[0]);
+    assert.ok(url.includes('3 pessoa'), 'deve mostrar total = 1 + 2 = 3');
   });
 
   console.log(`\n── Resultado: ${passed} passou · ${failed} falhou ─────────────\n`);
