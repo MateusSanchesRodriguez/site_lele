@@ -1,4 +1,6 @@
 const assert = require('assert');
+const fs     = require('fs');
+const path   = require('path');
 
 // ── Mock de req/res ──────────────────────────────────────────────
 function mockRes() {
@@ -250,6 +252,14 @@ async function test(name, fn) {
     assert.ok(url.includes('3 pessoa'), 'deve mostrar total = 1 + 2 = 3');
   });
 
-  console.log(`\n── Resultado: ${passed} passou · ${failed} falhou ─────────────\n`);
+  const status = failed > 0 ? '❌ FALHOU' : '✅ PASSOU';
+  const now    = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  const linha  = `[${now}]  ${status}  —  ${passed} passou · ${failed} falhou\n`;
+
+  const logPath = path.join(__dirname, 'history.log');
+  fs.appendFileSync(logPath, linha);
+
+  console.log(`\n── Resultado: ${passed} passou · ${failed} falhou ─────────────`);
+  console.log(`📋 Histórico salvo em tests/history.log\n`);
   process.exit(failed > 0 ? 1 : 0);
 })();
