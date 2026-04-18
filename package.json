@@ -6,10 +6,14 @@
     "node": ">=18.x"
   },
   "scripts": {
-    "test": "node tests/rsvp.test.js"
+    "test": "node tests/rsvp.test.js",
+    "test:integration": "node tests/integration.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
     "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "dotenv": "^17.4.2"
   }
 }
